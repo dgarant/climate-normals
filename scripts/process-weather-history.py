@@ -11,6 +11,9 @@ import calendar
 import sys
 from dateutil import parser as dparser
 import sqlite3
+import numpy as np
+
+# to do: look into https://www1.ncdc.noaa.gov/pub/data/uscrn/products/hourly02/
 
 requests_cache.install_cache("weather_cache")
 
@@ -19,7 +22,17 @@ def date_generator(from_date, to_date):
         yield from_date
         from_date = from_date + datetime.timedelta(days=1)
 
-def get_weather(start_date, end_date, station, api_key):
+def load_weather(start_date, end_date, station, api_key):
+    
+    conn = sqlite3.connect("../weather.s3db")
+
+    # remove existing history
+    cur = conn.cursor()
+    cur.execute("delete from history where station_id = ? and date >= ? and date <= ?",
+        (station["station_id"], start_date, end_date))
+    conn.commit()
+
+    recs_since_commit = 0
     for cur_date in date_generator(start_date, end_date):
         print("Downloading data for {0}".format(cur_date.isoformat()))
         req_url = ("https://api.darksky.net/forecast/{0}/{1},{2},{3}?exclude=currently,minutely"
@@ -28,7 +41,21 @@ def get_weather(start_date, end_date, station, api_key):
         full_response = resp.json()
 
         daily_data = full_response["daily"]["data"][0]
-        print(full_response)
+        hourly_data = full_response["hourly"]["data"]
+
+        tempf_mean = np.mean([h["temperature"] for h in hourly_data])
+        apparent_tempf_mean = np.mean([h["apparentTemperature"] for h in hourly_data])
+        cur.execute("insert into history (station_id, date, tempf_min, tempf_mean, tempf_max, apparent_tempf_min, apparent_tempf_mean, apparent_tempf_max) values (?, ?, ?, ?, ?, ?, ?, ?)",
+            (station["station_id"], cur_date,
+                daily_data["temperatureMin"], tempf_mean, daily_data["temperatureMax"],
+                daily_data["apparentTemperatureMin"], apparent_tempf_mean, daily_data["apparentTemperatureMax"]))
+
+        recs_since_commit += 1
+        if recs_since_commit >= 50:
+            conn.commit()
+
+
+    conn.commit()
 
 def get_stations():
 
@@ -67,6 +94,6 @@ def main():
     api_key = os.environ["DARKSKY_API_KEY"]
     
     for station in get_stations():
-        get_weather(dparser.parse(args.start_date), dparser.parse(args.end_date), station, api_key)
+        load_weather(dparser.parse(args.start_date), dparser.parse(args.end_date), station, api_key)
 
 main()
