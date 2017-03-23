@@ -2,13 +2,13 @@ var app = angular.module("Normals", ["ui.router"]);
 
 app.config(function($stateProvider, $urlRouterProvider) {
     $stateProvider.state({
-        name : "monthly-view",
-        url : "/monthly",
-        templateUrl : "static/partials/monthly-view.html",
-        controller : "MonthlyViewController"
+        name : "daily-view",
+        url : "/daily",
+        templateUrl : "static/partials/daily-view.html",
+        controller : "DailyViewController"
     });
 
-    $urlRouterProvider.otherwise("/monthly")
+    $urlRouterProvider.otherwise("/daily")
 
 });
 

@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+weather_cache.sqlite
 weather.s3db
 applog.txt
 

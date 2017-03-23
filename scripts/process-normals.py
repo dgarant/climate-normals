@@ -77,46 +77,49 @@ def load_statistics(stats_df, station_code_map):
     conn.commit()
     conn.close()
 
-zips = set(["03431", "01002", "01342"])
-stations = retrieve_dataframe("station-inventories/zipcodes-normals-stations.txt", ["STNID", "ZIP", "POSTOFFICE"])
-keep_station_ids = stations["STNID"][stations["ZIP"].isin(zips)].values
-print("Keeping stations: {0}".format(",".join(keep_station_ids)))
 
-station_code_map = load_stations(stations[stations["STNID"].isin(keep_station_ids)])
-print(station_code_map)
+def main():
+    zips = set(["03431", "01002", "01342"])
+    stations = retrieve_dataframe("station-inventories/zipcodes-normals-stations.txt", ["STNID", "ZIP", "POSTOFFICE"])
+    keep_station_ids = stations["STNID"][stations["ZIP"].isin(zips)].values
+    print("Keeping stations: {0}".format(",".join(keep_station_ids)))
 
-daily_cols = ["STNID", "MONTH"]
-for i in range(1, 32):
-    daily_cols.append("DAY{0}".format(i))
+    station_code_map = load_stations(stations[stations["STNID"].isin(keep_station_ids)])
+    print(station_code_map)
 
-def process_daily_stats(df, name):
-    long_stats = pd.melt(df, id_vars=["STNID", "MONTH"], var_name="DAY", value_name="VALUE")
-    long_stats["DAY"] = long_stats["DAY"].str.replace("DAY", "").astype(int)
-    long_stats = long_stats[~long_stats["VALUE"].isin(["-8888", "-9999"])]
-    long_stats["VALUE"] = long_stats["VALUE"].map(lambda x: x.rstrip("CSQRP")).astype(int)
-    long_stats["VALUE"][long_stats["VALUE"] == -6666] = 0
-    long_stats["STATISTIC"] = name
-    return long_stats
+    daily_cols = ["STNID", "MONTH"]
+    for i in range(1, 32):
+        daily_cols.append("DAY{0}".format(i))
 
-frames = []
-for agg_type in ["tavg", "tmax", "tmin"]:
-    for param_type in ["normal", "stddev"]:
-        cur_temps = retrieve_dataframe("products/temperature/dly-{0}-{1}.txt".format(agg_type, param_type), 
+    def process_daily_stats(df, name):
+        long_stats = pd.melt(df, id_vars=["STNID", "MONTH"], var_name="DAY", value_name="VALUE")
+        long_stats["DAY"] = long_stats["DAY"].str.replace("DAY", "").astype(int)
+        long_stats = long_stats[~long_stats["VALUE"].isin(["-8888", "-9999"])]
+        long_stats["VALUE"] = long_stats["VALUE"].map(lambda x: x.rstrip("CSQRP")).astype(int)
+        long_stats["VALUE"][long_stats["VALUE"] == -6666] = 0
+        long_stats["STATISTIC"] = name
+        return long_stats
+
+    frames = []
+    for agg_type in ["tavg", "tmax", "tmin"]:
+        for param_type in ["normal", "stddev"]:
+            cur_temps = retrieve_dataframe("products/temperature/dly-{0}-{1}.txt".format(agg_type, param_type), 
+                daily_cols, keep_station_ids)
+            long_temps = process_daily_stats(cur_temps, "tempf_{0}_{1}".format(agg_type, param_type))
+            long_temps["VALUE"] = long_temps["VALUE"] / 10.0 # converting from tenths to fractional degrees
+            frames.append(long_temps)
+
+    for stat in [25, 50, 75]:
+        cur_snowd = retrieve_dataframe("products/precipitation/dly-snwd-{0}pctl.txt".format(stat),
             daily_cols, keep_station_ids)
-        long_temps = process_daily_stats(cur_temps, "tempf_{0}_{1}".format(agg_type, param_type))
-        long_temps["VALUE"] = long_temps["VALUE"] / 10.0 # converting from tenths to fractional degrees
-        frames.append(long_temps)
+        long_snowd = process_daily_stats(cur_snowd, "snow_depth_inches_{0}pctl".format(stat))
+        frames.append(long_snowd)
 
-for stat in [25, 50, 75]:
-    cur_snowd = retrieve_dataframe("products/precipitation/dly-snwd-{0}pctl.txt".format(stat),
-        daily_cols, keep_station_ids)
-    long_snowd = process_daily_stats(cur_snowd, "snow_depth_inches_{0}pctl".format(stat))
-    frames.append(long_snowd)
+    temp_stats = pd.concat(frames)
+    temp_pivot = pd.pivot_table(temp_stats, "VALUE", ["STNID", "MONTH", "DAY"], ["STATISTIC"])
+    temp_pivot = temp_pivot.reset_index()
+    print(temp_pivot.head())
 
-temp_stats = pd.concat(frames)
-temp_pivot = pd.pivot_table(temp_stats, "VALUE", ["STNID", "MONTH", "DAY"], ["STATISTIC"])
-temp_pivot = temp_pivot.reset_index()
-print(temp_pivot.head())
+    load_statistics(temp_pivot, station_code_map)
 
-load_statistics(temp_pivot, station_code_map)
-
+main()

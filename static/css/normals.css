@@ -1,0 +1,32 @@
+
+/** Density plot background */
+
+.grid-background {
+      fill: #ddd;
+}
+
+.grid line {
+      stroke: #fff;
+}
+
+.grid .minor line {
+      stroke-opacity: .5;
+}
+
+.grid text {
+      display: none;
+}
+
+.axis line {
+      stroke: #000;
+}
+
+.axis path,
+.grid path {
+      display: none;
+}
+
+.axis text {
+    font: 40px sans-serif;
+}
+
